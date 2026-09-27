@@ -71,27 +71,31 @@ jobs:
           grep -q '"ok":true' /tmp/health.json
           grep -q '"redis":"PONG"' /tmp/health.json
 
-          STATUS=$(curl -sS -o /tmp/invalid.json -w '%{http_code}'             -X POST http://127.0.0.1:3001/api/v1/jobs             -H 'Content-Type: application/json'             -d '{"targetType":"invalid"}')
+          STATUS=$(curl -sS -o /tmp/invalid.json -w '%{http_code}' -X POST http://127.0.0.1:3001/api/v1/jobs -H 'Content-Type: application/json' -d '{"targetType":"invalid"}')
 
           cat /tmp/invalid.json
           test "$STATUS" = "400"
 
       - name: API scheduling and cancellation
         run: |
-          FUTURE=$(node -e "console.log(new Date(Date.now()+3600000).toISOString())")
+          node <<'NODE' > /tmp/schedule-payload.json
+          const payload = {
+            targetType: 'facebook_group',
+            targetUrl: 'https://www.facebook.com/groups/123',
+            content: 'scheduled',
+            scheduledAt: new Date(Date.now() + 3600000).toISOString()
+          };
+          process.stdout.write(JSON.stringify(payload));
+          NODE
 
-          curl -fsS -X POST http://127.0.0.1:3001/api/v1/jobs             -H 'Content-Type: application/json'             -d "{"targetType":"facebook_group","targetUrl":"https://www.facebook.com/groups/123","content":"scheduled","scheduledAt":"$FUTURE"}"             | tee /tmp/scheduled.json
-
+          curl -fsS -X POST http://127.0.0.1:3001/api/v1/jobs -H 'Content-Type: application/json' --data-binary @/tmp/schedule-payload.json | tee /tmp/scheduled.json
           grep -q '"status":"SCHEDULED"' /tmp/scheduled.json
 
           JOB_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/scheduled.json','utf8')).id)")
-
-          curl -fsS http://127.0.0.1:3001/api/v1/jobs/$JOB_ID             | tee /tmp/state.json
-
+          curl -fsS http://127.0.0.1:3001/api/v1/jobs/$JOB_ID | tee /tmp/state.json
           grep -q '"state":"delayed"' /tmp/state.json
 
-          curl -fsS -X DELETE http://127.0.0.1:3001/api/v1/jobs/$JOB_ID             | tee /tmp/cancel.json
-
+          curl -fsS -X DELETE http://127.0.0.1:3001/api/v1/jobs/$JOB_ID | tee /tmp/cancel.json
           grep -q '"status":"CANCELLED"' /tmp/cancel.json
 
       - name: Browser smoke
@@ -99,8 +103,11 @@ jobs:
 
       - name: Full Postiz Group Media Marketplace Worker E2E
         timeout-minutes: 2
-        run: |
-          BROWSER_PROFILE_DIR=/tmp/fb-full-e2e-profile           LOG_DIR=/tmp/fb-full-e2e-logs           SCREENSHOT_DIR=/tmp/fb-full-e2e-screens           npm run smoke:full
+        env:
+          BROWSER_PROFILE_DIR: /tmp/fb-full-e2e-profile
+          LOG_DIR: /tmp/fb-full-e2e-logs
+          SCREENSHOT_DIR: /tmp/fb-full-e2e-screens
+        run: npm run smoke:full
 
       - name: Docker compose validation
         run: |
