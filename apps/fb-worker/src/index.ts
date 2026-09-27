@@ -1,12 +1,12 @@
 import express from 'express';
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis } from 'ioredis';
 import { config } from './config.js';
 
 const app = express();
 app.use(express.json());
 
-const redis = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
+const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 const queue = new Queue('facebook-publish', { connection: redis });
 
 app.get('/health', async (_req, res) => {
