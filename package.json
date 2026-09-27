@@ -7,6 +7,7 @@
     "dev": "tsx apps/fb-worker/src/index.ts",
     "worker": "tsx apps/fb-worker/src/worker-runner.ts",
     "browser:login": "tsx apps/fb-worker/src/browser-login.ts",
+    "browser:doctor": "tsx apps/fb-worker/src/browser-doctor.ts",
     "playwright:install": "playwright install chromium",
     "typecheck": "tsc --noEmit",
     "smoke:browser": "tsx apps/fb-worker/src/browser-smoke.ts",
