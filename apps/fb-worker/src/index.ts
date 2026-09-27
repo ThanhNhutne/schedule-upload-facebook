@@ -2,6 +2,7 @@ import express from 'express';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { config } from './config.js';
+import { validateFacebookGroupJob } from './job-validation.js';
 
 const app = express();
 app.use(express.json());
@@ -27,16 +28,43 @@ app.get('/health', async (_req, res) => {
 });
 
 app.post('/api/v1/jobs', async (req, res) => {
-  const job = await queue.add('publish', req.body, {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 120000 },
-    removeOnComplete: 100,
-    removeOnFail: 100
-  });
+  try {
+    const payload = validateFacebookGroupJob(req.body);
+    const job = await queue.add('publish', payload, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 120000 },
+      removeOnComplete: 100,
+      removeOnFail: 100
+    });
 
-  res.status(202).json({
+    res.status(202).json({
+      id: job.id,
+      status: 'QUEUED'
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.get('/api/v1/jobs/:id', async (req, res) => {
+  const job = await queue.getJob(req.params.id);
+
+  if (!job) {
+    res.status(404).json({ error: 'Job not found.' });
+    return;
+  }
+
+  const state = await job.getState();
+
+  res.json({
     id: job.id,
-    status: 'QUEUED'
+    state,
+    attemptsMade: job.attemptsMade,
+    failedReason: job.failedReason || null,
+    returnvalue: job.returnvalue ?? null,
+    data: job.data
   });
 });
 
