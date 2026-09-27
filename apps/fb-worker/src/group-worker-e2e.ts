@@ -37,8 +37,9 @@ const connection = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', 
   maxRetriesPerRequest: null,
 });
 const queue = new Queue('facebook-publish', { connection });
+const queueEventsConnection = connection.duplicate();
 const queueEvents = new QueueEvents('facebook-publish', {
-  connection: connection.duplicate(),
+  connection: queueEventsConnection,
 });
 
 let worker: ReturnType<typeof startFacebookWorker> | undefined;
@@ -72,10 +73,18 @@ try {
   console.log('GROUP_WORKER_E2E_OK');
   console.log(JSON.stringify(result));
 } finally {
-  if (worker) await worker.close();
-  await closeFacebookBrowser();
-  await queueEvents.close();
-  await queue.close();
-  await connection.quit();
+  await closeFacebookBrowser().catch(() => undefined);
+
+  if (worker) {
+    await worker.close(true).catch(() => undefined);
+  }
+
+  // Force-disconnect test-only Redis clients so the smoke process exits cleanly.
+  queueEvents.disconnect();
+  await queue.close().catch(() => undefined);
+  queueEventsConnection.disconnect();
+  connection.disconnect();
+
+  server.closeAllConnections?.();
   server.close();
 }
