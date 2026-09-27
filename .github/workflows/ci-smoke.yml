@@ -25,6 +25,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379
       POSTIZ_BASE_URL: http://localhost:4007
       BROWSER_PROFILE_DIR: /tmp/fb-browser-profile
+      SCREENSHOT_DIR: /tmp/screenshots
       HEADLESS: "true"
 
     steps:
@@ -40,7 +41,7 @@ jobs:
         run: npm install
 
       - name: TypeScript check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -67,19 +68,35 @@ jobs:
           grep -q '"ok":true' /tmp/health.json
           grep -q '"redis":"PONG"' /tmp/health.json
 
-      - name: Verify enqueue endpoint
+      - name: Verify invalid enqueue rejected
+        run: |
+          STATUS=$(curl -sS -o /tmp/invalid-job.json -w '%{http_code}' \
+            -X POST http://127.0.0.1:3001/api/v1/jobs \
+            -H 'Content-Type: application/json' \
+            -d '{"target":"smoke-test","content":"hello"}')
+          cat /tmp/invalid-job.json
+          test "$STATUS" = "400"
+
+      - name: Verify valid enqueue endpoint
         run: |
           STATUS=$(curl -sS -o /tmp/job.json -w '%{http_code}' \
             -X POST http://127.0.0.1:3001/api/v1/jobs \
             -H 'Content-Type: application/json' \
-            -d '{"target":"smoke-test","content":"hello"}')
+            -d '{"targetType":"facebook_group","targetUrl":"https://www.facebook.com/groups/123456789","content":"hello"}')
 
           cat /tmp/job.json
           test "$STATUS" = "202"
           grep -q '"status":"QUEUED"' /tmp/job.json
 
+          JOB_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/job.json','utf8')).id)")
+          curl -fsS "http://127.0.0.1:3001/api/v1/jobs/$JOB_ID" | tee /tmp/job-status.json
+          grep -q '"state":"waiting"' /tmp/job-status.json
+
       - name: Playwright browser smoke
-        run: npx tsx apps/fb-worker/src/browser-smoke.ts
+        run: npm run smoke:browser
+
+      - name: Facebook Group publisher mock smoke
+        run: npm run smoke:group
 
       - name: Print API logs
         if: always()
