@@ -1,5 +1,5 @@
 export class ManualActionRequiredError extends Error {
-  readonly code = 'MANUAL_ACTION_REQUIRED';
+  readonly code: string = 'MANUAL_ACTION_REQUIRED';
 
   constructor(message: string) {
     super(message);
@@ -8,7 +8,7 @@ export class ManualActionRequiredError extends Error {
 }
 
 export class PermanentAutomationError extends Error {
-  readonly code = 'PERMANENT_AUTOMATION_ERROR';
+  readonly code: string = 'PERMANENT_AUTOMATION_ERROR';
 
   constructor(message: string) {
     super(message);
@@ -17,7 +17,7 @@ export class PermanentAutomationError extends Error {
 }
 
 export class FacebookUiError extends PermanentAutomationError {
-  readonly code = 'FACEBOOK_UI_ERROR';
+  override readonly code: string = 'FACEBOOK_UI_ERROR';
 
   constructor(message: string) {
     super(message);
@@ -26,7 +26,7 @@ export class FacebookUiError extends PermanentAutomationError {
 }
 
 export class RetryableAutomationError extends Error {
-  readonly code = 'RETRYABLE_AUTOMATION_ERROR';
+  readonly code: string = 'RETRYABLE_AUTOMATION_ERROR';
 
   constructor(message: string) {
     super(message);
