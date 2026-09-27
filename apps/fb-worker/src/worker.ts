@@ -49,6 +49,7 @@ export async function closeFacebookBrowser(): Promise<void> {
   }
 
   browserContext = undefined;
+
   await closePersistentFacebookContext(
     context,
   );
@@ -139,15 +140,6 @@ async function processFacebookJob(
         ? { screenshot }
         : undefined,
     });
-
-    if (
-      context &&
-      context.pages().length ===
-        0
-    ) {
-      browserContext =
-        undefined;
-    }
 
     throw new Error(
       screenshot
