@@ -2,6 +2,7 @@ x-app: &app
   build:
     context: .
     dockerfile: Dockerfile
+  restart: unless-stopped
   env_file:
     - .env
   environment:
@@ -14,17 +15,14 @@ x-app: &app
     redis:
       condition: service_healthy
   volumes:
-    - ./data/browser-profile:/app/data/browser-profile
-    - ./screenshots:/app/screenshots
-    - ./logs:/app/logs
+    - browser-profile:/app/data/browser-profile
+    - screenshots:/app/screenshots
+    - logs:/app/logs
 
 services:
   redis:
     image: redis:7.2-alpine
-    container_name: schedule-upload-facebook-redis
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -36,15 +34,16 @@ services:
 
   api:
     <<: *app
-    container_name: schedule-upload-facebook-api
     command: ["npm", "run", "dev"]
     ports:
       - "127.0.0.1:3001:3001"
 
   worker:
     <<: *app
-    container_name: schedule-upload-facebook-worker
     command: ["npm", "run", "worker"]
 
 volumes:
   redis-data:
+  browser-profile:
+  screenshots:
+  logs:
