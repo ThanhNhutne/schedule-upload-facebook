@@ -98,6 +98,9 @@ jobs:
       - name: Facebook Group publisher mock smoke
         run: npm run smoke:group
 
+      - name: Facebook Group worker end-to-end
+        run: npx tsx apps/fb-worker/src/group-worker-e2e.ts
+
       - name: Print API logs
         if: always()
         run: cat /tmp/fb-worker-api.log || true
