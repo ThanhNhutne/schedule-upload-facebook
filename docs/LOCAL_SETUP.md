@@ -9,6 +9,21 @@ localhost:6379  Redis
 Chromium         Persistent Facebook session
 ```
 
+## Recommended Windows local topology
+
+For real Facebook acceptance testing on Windows, keep Chromium and the worker native on Windows so they use the same OS-compatible persistent profile.
+
+```text
+Redis             Docker
+Postiz            Docker / separate local stack
+Automation API    native Windows
+Worker            native Windows
+Playwright        native Windows
+Facebook profile  ./data/browser-profile
+```
+
+Do not run `browser:login` and `worker` at the same time. Both intentionally use the same persistent Facebook profile and the application now enforces an exclusive profile lock.
+
 ## L01-L03 — Postiz
 
 Bootstrap the official Postiz compose:
@@ -50,7 +65,9 @@ npm run postiz:check
 
 Draft/upload checks modify Postiz data, so they are opt-in.
 
-## L04-L08 — API, worker, media and scheduling
+## L04-L08 — API, browser session, worker, media and scheduling
+
+Initial setup:
 
 ```bash
 cp .env.example .env
@@ -58,8 +75,27 @@ docker compose -f docker-compose.local.yml up -d redis
 
 npm install
 npm run playwright:install
+```
+
+Before opening the Facebook profile, inspect the browser state:
+
+```bash
+npm run browser:doctor
+```
+
+Expected when the profile is free:
+
+```text
+BROWSER_DOCTOR_OK
+```
+
+Create or refresh the Facebook session:
+
+```bash
 npm run browser:login
 ```
+
+The login command owns the profile exclusively. Complete the login in Chromium, return to the terminal, and press Enter. The command then closes Chromium and releases the profile lock. Do not start the worker until the login command has exited.
 
 API:
 
@@ -72,6 +108,8 @@ Worker:
 ```bash
 npm run worker
 ```
+
+The worker owns the same profile while its persistent Chromium context is open. If another application process already owns the profile, the job is classified as manual action required and is discarded instead of being retried repeatedly.
 
 Group job with media:
 
@@ -118,6 +156,32 @@ Retry:
 ```bash
 curl -X POST http://localhost:3001/api/v1/jobs/JOB_ID/retry
 ```
+
+## Browser profile lifecycle
+
+Normal flow:
+
+```text
+npm run browser:doctor
+        ↓
+npm run browser:login
+        ↓
+manual Facebook login if needed
+        ↓
+return to terminal and press Enter
+        ↓
+Chromium closes + profile lock released
+        ↓
+npm run worker
+        ↓
+worker opens and owns persistent profile
+        ↓
+submit jobs
+```
+
+If `browser:doctor` reports a held lock, it also reports the owner and PID. Stop that process rather than deleting browser files. Stale application locks are cleaned automatically on the next profile acquisition.
+
+The Facebook profile directory itself must not be deleted during troubleshooting because it contains the persistent authenticated session.
 
 ## L09 — Postiz adapter
 
@@ -183,16 +247,13 @@ Marketplace UI changes frequently. Selector failures are treated as permanent fo
 ./screenshots/job-<id>-failed.png
 ```
 
-Transient failures use BullMQ retry/backoff. UI/security/manual-action failures do not retry indefinitely.
+Transient failures use BullMQ retry/backoff. Browser-profile conflicts, UI failures, security challenges, and other manual-action failures are discarded rather than blindly retried.
 
 ## L12 — Docker
 
-After creating a valid browser profile:
+Docker remains useful for Redis and Postiz locally.
 
-```bash
-docker compose -f docker-compose.local.yml build
-docker compose -f docker-compose.local.yml up -d
-```
+For the first real Facebook acceptance test on Windows, run the Automation API, worker, and Playwright natively on Windows. Do not assume a Chromium profile created on Windows can be reused safely inside the Linux Playwright container.
 
 ## L13 — Production
 
