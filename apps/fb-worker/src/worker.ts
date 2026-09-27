@@ -19,6 +19,12 @@ async function getBrowserContext(): Promise<BrowserContext> {
   return browserContext;
 }
 
+export async function closeFacebookBrowser(): Promise<void> {
+  if (!browserContext) return;
+  await browserContext.close();
+  browserContext = undefined;
+}
+
 async function processFacebookJob(job: Job): Promise<unknown> {
   const input = validateFacebookGroupJob(job.data);
   const context = await getBrowserContext();
