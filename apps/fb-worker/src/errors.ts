@@ -7,6 +7,15 @@ export class ManualActionRequiredError extends Error {
   }
 }
 
+export class BrowserProfileInUseError extends ManualActionRequiredError {
+  override readonly code: string = 'BROWSER_PROFILE_IN_USE';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'BrowserProfileInUseError';
+  }
+}
+
 export class PermanentAutomationError extends Error {
   readonly code: string = 'PERMANENT_AUTOMATION_ERROR';
 
