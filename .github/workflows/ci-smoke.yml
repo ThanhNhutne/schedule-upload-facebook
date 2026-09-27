@@ -2,7 +2,7 @@ name: CI Full Smoke
 
 on:
   push:
-    branches: [main, fix-facebook-group-composer]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
