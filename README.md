@@ -1,13 +1,13 @@
 # schedule-upload-facebook
 
-Local-first social publishing automation layer built around **Postiz + Playwright**.
+Local-first automation layer for **Postiz + Facebook Group + Facebook Marketplace**.
 
 ## Architecture
 
 ```text
 Postiz
   |
-  | REST API / scheduled content
+  | Public API
   v
 Automation API
   |
@@ -15,133 +15,92 @@ Automation API
 Redis / BullMQ
   |
   v
-fb-worker
-  |
-  v
-Playwright + persistent Chromium profile
+Playwright worker
   |
   +--> Facebook Groups
   +--> Facebook Marketplace
 ```
 
-Postiz remains responsible for content, media, calendar, and platforms supported by official APIs. This repository owns only the custom automation layer.
+Postiz remains responsible for content/calendar and platforms supported through official APIs. This repository owns the custom browser automation layer.
 
-## Current phase
+## Milestones
 
-Phase 1 scaffold:
+| Milestone | Implementation |
+|---|---|
+| L01 Repository scaffold | Done |
+| L02 Postiz local bootstrap | Done |
+| L03 Postiz verification tooling | Done |
+| L04 Redis + Automation API | Done |
+| L05 Persistent Chromium session | Done |
+| L06 Group text POC | Done |
+| L07 Group images/video | Done |
+| L08 Queue + scheduling + job states | Done |
+| L09 Postiz adapter | Done |
+| L10 Marketplace POC | Done |
+| L11 Retry/logging/screenshots | Done |
+| L12 Dockerized API/worker | Done |
+| L13 Production migration tooling | Done |
 
-- Local Postiz bootstrap helper
-- Redis for automation jobs
-- TypeScript worker
-- Playwright persistent Chromium profile
-- Manual Facebook login flow
-- Health endpoint
-- Safe foundation for Group and Marketplace automation
+“Done” means the implementation exists and is covered by CI/mock tests where credentials are not required. Real Facebook/Postiz publishing requires the operator's own authenticated Facebook session and Postiz API token.
 
-No CAPTCHA, 2FA, checkpoint, or anti-abuse bypass is implemented.
-
-## Repository layout
-
-```text
-.
-├── apps/
-│   └── fb-worker/
-├── docs/
-├── scripts/
-├── .env.example
-├── docker-compose.local.yml
-└── package.json
-```
-
-## Local quick start
-
-### 1. Requirements
-
-- Git
-- Docker + Docker Compose
-- Node.js 22+
-- npm
-
-### 2. Clone
+## Quick start
 
 ```bash
 git clone https://github.com/ThanhNhutne/schedule-upload-facebook.git
 cd schedule-upload-facebook
-```
 
-### 3. Environment
-
-```bash
 cp .env.example .env
-```
 
-### 4. Start Redis
-
-```bash
-docker compose -f docker-compose.local.yml up -d
-```
-
-### 5. Install worker
-
-```bash
 npm install
 npm run playwright:install
+
+docker compose -f docker-compose.local.yml up -d redis
+
+npm run browser:login
 ```
 
-### 6. Start API/worker
+Run API:
 
 ```bash
 npm run dev
 ```
 
-Health check:
+Run worker:
+
+```bash
+npm run worker
+```
+
+Health:
 
 ```bash
 curl http://localhost:3001/health
 ```
 
-### 7. Open persistent Facebook browser session
+## Full smoke
+
+With Redis on localhost:
 
 ```bash
-npm run browser:login
+HEADLESS=true \
+BROWSER_PROFILE_DIR=/tmp/fb-full-profile \
+LOG_DIR=/tmp/fb-full-logs \
+SCREENSHOT_DIR=/tmp/fb-full-screens \
+npm run smoke:full
 ```
-
-Log in manually. The Chromium profile is kept in `./data/browser-profile` and is ignored by Git.
-
-### 8. Bootstrap Postiz locally
-
-```bash
-bash scripts/bootstrap-postiz.sh
-```
-
-Then follow:
-
-```text
-docs/LOCAL_SETUP.md
-```
-
-## Development order
-
-1. Postiz local
-2. Persistent Facebook browser session
-3. One Group text post proof-of-concept
-4. Image/video upload
-5. BullMQ job queue
-6. Automation REST API
-7. Postiz adapter
-8. Marketplace proof-of-concept
-9. Logs, screenshots, retry, manual-action state
-10. Production hardening
 
 ## Security
 
+No CAPTCHA, 2FA, checkpoint, account-security, or anti-abuse bypass is implemented.
+
 Never commit:
 
-- Facebook cookies
-- Chromium profiles
-- API tokens
-- Postiz JWT secrets
-- database passwords
-- screenshots containing private data
+- Facebook cookies/browser profiles
+- Postiz API keys
+- automation API tokens
+- screenshots/logs containing private data
 
-See `.gitignore`.
+See:
+
+- `docs/LOCAL_SETUP.md`
+- `docs/PRODUCTION.md`

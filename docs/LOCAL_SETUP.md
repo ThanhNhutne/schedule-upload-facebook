@@ -1,184 +1,199 @@
 # Local Development Setup
 
-## Target architecture
+## Services
 
 ```text
 localhost:4007  Postiz
 localhost:3001  Automation API
-localhost:6379  Redis (bound to loopback)
+localhost:6379  Redis
 Chromium         Persistent Facebook session
 ```
 
-## 1. Requirements
+## L01-L03 — Postiz
 
-- Docker + Docker Compose
-- Git
-- Node.js 22+
-- npm
-
-Check:
+Bootstrap the official Postiz compose:
 
 ```bash
-docker --version
-docker compose version
-node --version
-npm --version
-git --version
+bash scripts/bootstrap-postiz.sh
+cd postiz-local
 ```
 
-## 2. Clone this repository
+Configure local URLs, then:
 
 ```bash
-git clone https://github.com/ThanhNhutne/schedule-upload-facebook.git
-cd schedule-upload-facebook
+docker compose up -d
+docker compose ps
 ```
 
-## 3. Environment
+Verify:
+
+```bash
+cd ..
+npm run postiz:check
+```
+
+With API:
+
+```bash
+POSTIZ_API_TOKEN='<key>' npm run postiz:check
+```
+
+Optional real upload/draft smoke:
+
+```bash
+POSTIZ_API_TOKEN='<key>' \
+POSTIZ_SMOKE_UPLOAD_FILE='./sample.jpg' \
+POSTIZ_SMOKE_CREATE_DRAFT=true \
+POSTIZ_SMOKE_INTEGRATION_ID='<integration-id>' \
+npm run postiz:check
+```
+
+Draft/upload checks modify Postiz data, so they are opt-in.
+
+## L04-L08 — API, worker, media and scheduling
 
 ```bash
 cp .env.example .env
-```
+docker compose -f docker-compose.local.yml up -d redis
 
-## 4. Start automation Redis
-
-```bash
-docker compose -f docker-compose.local.yml up -d
-docker compose -f docker-compose.local.yml ps
-```
-
-## 5. Install Node dependencies
-
-```bash
 npm install
 npm run playwright:install
+npm run browser:login
 ```
 
-On Ubuntu, if Playwright reports missing system packages:
-
-```bash
-npx playwright install-deps chromium
-```
-
-## 6. Start automation API
+API:
 
 ```bash
 npm run dev
 ```
 
-Test:
+Worker:
 
 ```bash
-curl http://localhost:3001/health
+npm run worker
 ```
 
-Expected shape:
+Group job with media:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "targetType":"facebook_group",
+    "targetUrl":"https://www.facebook.com/groups/GROUP_ID",
+    "content":"Local POC",
+    "media":[
+      {
+        "source":"./sample.jpg",
+        "kind":"image"
+      }
+    ]
+  }'
+```
+
+Video uses the same media array with `kind: "video"`.
+
+Scheduling:
 
 ```json
 {
-  "ok": true,
-  "service": "fb-worker-api",
-  "redis": "PONG"
+  "scheduledAt":"2026-10-01T14:00:00+07:00"
 }
 ```
 
-## 7. Create persistent Facebook session
-
-Run:
+Inspect:
 
 ```bash
-npm run browser:login
+curl http://localhost:3001/api/v1/jobs/JOB_ID
 ```
 
-A Chromium window opens.
+Cancel:
 
-Log in manually to Facebook and complete any normal Facebook security prompts. Close Chromium afterward.
+```bash
+curl -X DELETE http://localhost:3001/api/v1/jobs/JOB_ID
+```
 
-The session is stored under:
+Retry:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/jobs/JOB_ID/retry
+```
+
+## L09 — Postiz adapter
+
+Current Postiz public endpoints used:
+
+- `GET /public/v1/posts`
+- `GET /public/v1/integrations`
+- `GET /public/v1/is-connected`
+
+Sync request:
+
+```json
+{
+  "startDate":"2026-09-27T00:00:00+07:00",
+  "endDate":"2026-09-28T00:00:00+07:00",
+  "mappings":[
+    {
+      "postId":"POSTIZ_POST_ID",
+      "targetType":"facebook_group",
+      "targetUrl":"https://www.facebook.com/groups/GROUP_ID"
+    }
+  ]
+}
+```
+
+```bash
+curl -X POST http://localhost:3001/api/v1/postiz/sync \
+  -H 'Content-Type: application/json' \
+  -d @sync.json
+```
+
+Postiz calendar output exposes content/date but not the full original media payload. Media for custom browser targets is therefore supplied explicitly in the mapping.
+
+## L10 — Marketplace
+
+```bash
+curl -X POST http://localhost:3001/api/v1/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "targetType":"facebook_marketplace",
+    "listing":{
+      "title":"Căn hộ full nội thất Quận 7",
+      "price":5500000,
+      "category":"Property Rentals",
+      "location":"Quận 7",
+      "description":"Nội dung listing",
+      "media":[
+        {
+          "source":"./sample.jpg",
+          "kind":"image"
+        }
+      ]
+    }
+  }'
+```
+
+Marketplace UI changes frequently. Selector failures are treated as permanent for that job and produce a failure screenshot.
+
+## L11 — Logs, screenshots and retry
 
 ```text
-./data/browser-profile
+./logs/jobs.jsonl
+./screenshots/job-<id>-failed.png
 ```
 
-That directory is excluded from Git.
+Transient failures use BullMQ retry/backoff. UI/security/manual-action failures do not retry indefinitely.
 
-## 8. Bootstrap Postiz locally
+## L12 — Docker
+
+After creating a valid browser profile:
 
 ```bash
-bash scripts/bootstrap-postiz.sh
+docker compose -f docker-compose.local.yml build
+docker compose -f docker-compose.local.yml up -d
 ```
 
-Then:
+## L13 — Production
 
-```bash
-cd postiz-local
-nano docker-compose.yaml
-```
-
-For local use keep:
-
-```yaml
-MAIN_URL: 'http://localhost:4007'
-FRONTEND_URL: 'http://localhost:4007'
-NEXT_PUBLIC_BACKEND_URL: 'http://localhost:4007/api'
-```
-
-Generate a JWT secret:
-
-```bash
-openssl rand -hex 64
-```
-
-Replace the sample `JWT_SECRET`, then:
-
-```bash
-docker compose pull
-docker compose up -d
-docker compose ps
-```
-
-Open:
-
-```text
-http://localhost:4007
-```
-
-## 9. Local milestone order
-
-```text
-L01 Repository scaffold
-L02 Postiz local running
-L03 Postiz media/draft/calendar verified
-L04 Redis + automation API running
-L05 Persistent Chromium session verified
-L06 Facebook Group text POC
-L07 Facebook Group images/video
-L08 BullMQ worker + job states
-L09 Postiz adapter
-L10 Marketplace POC
-L11 Retry/logging/screenshots
-L12 Containerize worker
-L13 Production migration
-```
-
-## Current implementation status
-
-Implemented:
-
-- repository scaffold
-- Redis local compose
-- API health endpoint
-- BullMQ enqueue endpoint
-- persistent Playwright browser launcher
-- manual Facebook login helper
-- Postiz bootstrap helper
-
-Not implemented yet:
-
-- Facebook Group selectors/publish logic
-- actual BullMQ job consumer
-- Postiz adapter
-- Marketplace publishing
-- retry classification
-- screenshots/log persistence
-
-The next implementation milestone should be **L05/L06** after local infrastructure is confirmed.
+See `docs/PRODUCTION.md`.
