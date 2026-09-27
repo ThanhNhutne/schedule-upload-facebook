@@ -2,7 +2,7 @@ name: CI Full Smoke
 
 on:
   push:
-    branches: [main, fix-browser-lifecycle]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
