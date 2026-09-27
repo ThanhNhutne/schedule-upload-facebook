@@ -99,7 +99,8 @@ jobs:
         run: npm run smoke:group
 
       - name: Facebook Group worker end-to-end
-        run: npx tsx apps/fb-worker/src/group-worker-e2e.ts
+        timeout-minutes: 1
+        run: BROWSER_PROFILE_DIR=/tmp/fb-worker-e2e-profile npx tsx apps/fb-worker/src/group-worker-e2e.ts
 
       - name: Print API logs
         if: always()
