@@ -17,7 +17,6 @@ app.get('/groups/test', (_req, res) => {
     </div>
     <script>
       const dialog = document.getElementById('dialog');
-      const composer = document.getElementById('composer');
 
       document.getElementById('open-composer').addEventListener('click', () => {
         dialog.hidden = false;
@@ -41,10 +40,18 @@ const queue = new Queue('facebook-publish', { connection });
 const queueEvents = new QueueEvents('facebook-publish', {
   connection: connection.duplicate(),
 });
-const worker = startFacebookWorker();
+
+let worker: ReturnType<typeof startFacebookWorker> | undefined;
 
 try {
   await queueEvents.waitUntilReady();
+
+  // CI's API smoke test intentionally leaves one waiting job behind.
+  // Remove old waiting/delayed jobs before starting the real worker E2E.
+  await queue.drain(true);
+
+  worker = startFacebookWorker();
+  await worker.waitUntilReady();
 
   const job = await queue.add('publish', {
     targetType: 'facebook_group',
@@ -65,7 +72,7 @@ try {
   console.log('GROUP_WORKER_E2E_OK');
   console.log(JSON.stringify(result));
 } finally {
-  await worker.close();
+  if (worker) await worker.close();
   await closeFacebookBrowser();
   await queueEvents.close();
   await queue.close();
