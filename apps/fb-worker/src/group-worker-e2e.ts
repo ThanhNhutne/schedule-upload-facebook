@@ -1,12 +1,13 @@
 import express from 'express';
 import { Queue, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { closeFacebookBrowser, startFacebookWorker } from './worker.js';
+import { startFacebookWorker } from './worker.js';
 
-const app = express();
+async function main(): Promise<void> {
+  const app = express();
 
-app.get('/groups/test', (_req, res) => {
-  res.type('html').send(`
+  app.get('/groups/test', (_req, res) => {
+    res.type('html').send(`
 <!doctype html>
 <html>
   <body>
@@ -29,29 +30,25 @@ app.get('/groups/test', (_req, res) => {
     </script>
   </body>
 </html>
-  `);
-});
+    `);
+  });
 
-const server = app.listen(3901, '127.0.0.1');
-const connection = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', {
-  maxRetriesPerRequest: null,
-});
-const queue = new Queue('facebook-publish', { connection });
-const queueEventsConnection = connection.duplicate();
-const queueEvents = new QueueEvents('facebook-publish', {
-  connection: queueEventsConnection,
-});
+  app.listen(3901, '127.0.0.1');
 
-let worker: ReturnType<typeof startFacebookWorker> | undefined;
+  const connection = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', {
+    maxRetriesPerRequest: null,
+  });
+  const queue = new Queue('facebook-publish', { connection });
+  const queueEvents = new QueueEvents('facebook-publish', {
+    connection: connection.duplicate(),
+  });
 
-try {
   await queueEvents.waitUntilReady();
 
   // CI's API smoke test intentionally leaves one waiting job behind.
-  // Remove old waiting/delayed jobs before starting the real worker E2E.
   await queue.drain(true);
 
-  worker = startFacebookWorker();
+  const worker = startFacebookWorker();
   await worker.waitUntilReady();
 
   const job = await queue.add('publish', {
@@ -72,19 +69,12 @@ try {
 
   console.log('GROUP_WORKER_E2E_OK');
   console.log(JSON.stringify(result));
-} finally {
-  await closeFacebookBrowser().catch(() => undefined);
 
-  if (worker) {
-    await worker.close(true).catch(() => undefined);
-  }
-
-  // Force-disconnect test-only Redis clients so the smoke process exits cleanly.
-  queueEvents.disconnect();
-  await queue.close().catch(() => undefined);
-  queueEventsConnection.disconnect();
-  connection.disconnect();
-
-  server.closeAllConnections?.();
-  server.close();
+  // Test-only process: GitHub runner disposes all child resources.
+  process.exit(0);
 }
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
