@@ -25,15 +25,21 @@ const POST_BUTTON_TEXT = ['Post', 'Đăng'];
 
 async function openComposer(page: Page): Promise<void> {
   const candidates: Locator[] = [
+    page.getByRole('button', {
+      name: /create post|tạo bài viết|write something|what's on your mind|bạn viết gì|viết gì đó/i,
+    }),
     page
       .locator('[role="button"]')
       .filter({
         hasText: /write something|what's on your mind|bạn viết gì|viết gì đó/i,
       }),
-    ...CREATE_POST_TEXT.map((text) => page.getByText(text, { exact: true })),
+    ...CREATE_POST_TEXT.map((text) =>
+      page.getByText(text, { exact: true }),
+    ),
   ];
 
   const trigger = await firstVisible(candidates);
+
   if (!trigger) {
     throw new FacebookUiError(
       'Could not find the Facebook Group create-post control.',
@@ -43,42 +49,102 @@ async function openComposer(page: Page): Promise<void> {
   await trigger.click();
 }
 
-async function findComposer(page: Page): Promise<Locator> {
-  const dialog = page.getByRole('dialog').last();
+async function findCreatePostDialog(
+  page: Page,
+  timeoutMs = 15_000,
+): Promise<Locator> {
+  const deadline = Date.now() + timeoutMs;
 
-  if (await dialog.isVisible().catch(() => false)) {
-    const inDialog = await firstVisible([
-      dialog.locator('[contenteditable="true"][role="textbox"]'),
-      dialog.locator('[contenteditable="true"]'),
-    ]);
-    if (inDialog) return inDialog;
+  while (Date.now() < deadline) {
+    const dialogs = page.getByRole('dialog');
+    const count = await dialogs.count().catch(() => 0);
+
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const dialog = dialogs.nth(index);
+
+      if (!(await dialog.isVisible().catch(() => false))) {
+        continue;
+      }
+
+      const composer = await firstVisible([
+        dialog.locator(
+          '[contenteditable="true"][role="textbox"][data-lexical-editor="true"]',
+        ),
+        dialog.locator(
+          '[contenteditable="true"][role="textbox"]',
+        ),
+      ]);
+
+      if (!composer) {
+        continue;
+      }
+
+      const submitCandidates = POST_BUTTON_TEXT.map((label) =>
+        dialog.getByRole('button', {
+          name: label,
+          exact: true,
+        }),
+      );
+
+      const submit = await firstVisible(submitCandidates);
+
+      if (submit) {
+        return dialog;
+      }
+    }
+
+    await page.waitForTimeout(250);
   }
 
-  const fallback = await firstVisible([
-    page.locator('[contenteditable="true"][role="textbox"]'),
-    page.locator('[contenteditable="true"]'),
+  throw new FacebookUiError(
+    'Create-post control was clicked, but a valid Facebook Create Post dialog was not found.',
+  );
+}
+
+async function findComposer(
+  dialog: Locator,
+): Promise<Locator> {
+  const composer = await firstVisible([
+    dialog.locator(
+      '[contenteditable="true"][role="textbox"][data-lexical-editor="true"]',
+    ),
+    dialog.locator(
+      '[contenteditable="true"][role="textbox"]',
+    ),
   ]);
 
-  if (!fallback) {
+  if (!composer) {
     throw new FacebookUiError(
-      'Create-post dialog opened, but no editable composer was found.',
+      'Create Post dialog opened, but its post composer textbox was not found.',
     );
   }
 
-  return fallback;
+  return composer;
 }
 
-async function attachMedia(page: Page, mediaPaths: string[]): Promise<void> {
-  if (!mediaPaths.length) return;
+async function attachMedia(
+  page: Page,
+  dialog: Locator,
+  mediaPaths: string[],
+): Promise<void> {
+  if (!mediaPaths.length) {
+    return;
+  }
 
-  const dialog = page.getByRole('dialog').last();
-  let input = dialog.locator('input[type="file"]').last();
+  let input = dialog.locator(
+    'input[type="file"]',
+  ).last();
 
-  if ((await input.count().catch(() => 0)) === 0) {
+  if (
+    (await input.count().catch(() => 0)) === 0
+  ) {
     const mediaButton = await firstVisible([
-      dialog.getByRole('button', { name: /photo|video|ảnh/i }),
-      page.getByRole('button', { name: /photo|video|ảnh/i }),
-      dialog.getByText(/photo\/video|ảnh\/video/i),
+      dialog.getByRole('button', {
+        name: /photo|video|ảnh/i,
+      }),
+      dialog.getByText(
+        /photo\/video|ảnh\/video/i,
+      ),
     ]);
 
     if (mediaButton) {
@@ -86,34 +152,42 @@ async function attachMedia(page: Page, mediaPaths: string[]): Promise<void> {
       await page.waitForTimeout(300);
     }
 
-    input = dialog.locator('input[type="file"]').last();
+    input = dialog.locator(
+      'input[type="file"]',
+    ).last();
   }
 
-  if ((await input.count().catch(() => 0)) === 0) {
-    input = page.locator('input[type="file"]').last();
-  }
-
-  if ((await input.count().catch(() => 0)) === 0) {
+  if (
+    (await input.count().catch(() => 0)) === 0
+  ) {
     throw new FacebookUiError(
-      'Could not find a media file input in Group composer.',
+      'Could not find a media file input inside the Facebook Create Post dialog.',
     );
   }
 
-  await input.setInputFiles(mediaPaths);
+  await input.setInputFiles(
+    mediaPaths,
+  );
 }
 
-async function submitPost(page: Page): Promise<void> {
-  const dialog = page.getByRole('dialog').last();
-  const candidates: Locator[] = [];
+async function submitPost(
+  dialog: Locator,
+): Promise<void> {
+  const candidates = POST_BUTTON_TEXT.map(
+    (label) =>
+      dialog.getByRole('button', {
+        name: label,
+        exact: true,
+      }),
+  );
 
-  for (const label of POST_BUTTON_TEXT) {
-    candidates.push(dialog.getByRole('button', { name: label, exact: true }));
-    candidates.push(page.getByRole('button', { name: label, exact: true }));
-  }
+  const button =
+    await firstVisible(candidates);
 
-  const button = await firstVisible(candidates);
   if (!button) {
-    throw new FacebookUiError('Could not find the Post/Đăng button.');
+    throw new FacebookUiError(
+      'Could not find the Post/Đăng button inside the Facebook Create Post dialog.',
+    );
   }
 
   await waitForEnabledButton(button);
@@ -124,32 +198,63 @@ export async function publishFacebookGroupPost(
   context: BrowserContext,
   input: FacebookGroupJob,
 ): Promise<PublishResult> {
-  const page = context.pages()[0] ?? (await context.newPage());
-  const materialized = await materializeMedia(input.media || []);
+  const page =
+    context.pages()[0] ??
+    (await context.newPage());
+
+  const materialized =
+    await materializeMedia(
+      input.media || [],
+    );
 
   try {
-    await page.goto(input.targetUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60_000,
-    });
+    await page.goto(
+      input.targetUrl,
+      {
+        waitUntil:
+          'domcontentloaded',
+        timeout: 60_000,
+      },
+    );
 
-    if (isRealFacebookUrl(input.targetUrl)) {
-      await assertFacebookLoggedIn(page);
+    if (
+      isRealFacebookUrl(
+        input.targetUrl,
+      )
+    ) {
+      await assertFacebookLoggedIn(
+        page,
+      );
     }
 
     await openComposer(page);
-    const composer = await findComposer(page);
+
+    const dialog =
+      await findCreatePostDialog(
+        page,
+      );
+
+    const composer =
+      await findComposer(dialog);
 
     await composer.click();
-    await composer.fill(input.content);
+    await composer.fill(
+      input.content,
+    );
 
-    await attachMedia(page, materialized.paths);
-    await submitPost(page);
+    await attachMedia(
+      page,
+      dialog,
+      materialized.paths,
+    );
 
-    await page
-      .getByRole('dialog')
-      .last()
-      .waitFor({ state: 'hidden', timeout: 30_000 })
+    await submitPost(dialog);
+
+    await dialog
+      .waitFor({
+        state: 'hidden',
+        timeout: 30_000,
+      })
       .catch(() => undefined);
 
     await page.waitForTimeout(750);
@@ -158,29 +263,46 @@ export async function publishFacebookGroupPost(
       status: 'POSTED',
       targetUrl: input.targetUrl,
       postUrl: page.url(),
-      publishedAt: new Date().toISOString(),
+      publishedAt:
+        new Date().toISOString(),
     };
   } finally {
     await materialized.cleanup();
   }
 }
 
-export const publishFacebookGroupTextPost = publishFacebookGroupPost;
+export const publishFacebookGroupTextPost =
+  publishFacebookGroupPost;
 
 export async function saveFailureScreenshot(
   page: Page | undefined,
   directory: string,
   jobId: string,
-): Promise<string | undefined> {
-  if (!page) return undefined;
+): Promise<
+  string | undefined
+> {
+  if (!page) {
+    return undefined;
+  }
 
-  await mkdir(directory, { recursive: true });
-  const file = path.join(directory, `job-${jobId}-failed.png`);
+  await mkdir(directory, {
+    recursive: true,
+  });
+
+  const file = path.join(
+    directory,
+    `job-${jobId}-failed.png`,
+  );
 
   const saved = await page
-    .screenshot({ path: file, fullPage: true })
+    .screenshot({
+      path: file,
+      fullPage: true,
+    })
     .then(() => true)
     .catch(() => false);
 
-  return saved ? file : undefined;
+  return saved
+    ? file
+    : undefined;
 }
