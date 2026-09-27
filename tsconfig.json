@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["apps/**/*.ts"]
+  "include": ["apps/**/*.ts", "scripts/**/*.ts"]
 }
