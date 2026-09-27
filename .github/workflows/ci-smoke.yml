@@ -1,0 +1,86 @@
+name: CI Smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: 3001
+      REDIS_URL: redis://127.0.0.1:6379
+      POSTIZ_BASE_URL: http://localhost:4007
+      BROWSER_PROFILE_DIR: /tmp/fb-browser-profile
+      HEADLESS: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start API
+        run: |
+          npm run dev > /tmp/fb-worker-api.log 2>&1 &
+          echo $! > /tmp/fb-worker-api.pid
+
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3001/health > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/fb-worker-api.log
+          exit 1
+
+      - name: Verify health endpoint
+        run: |
+          curl -fsS http://127.0.0.1:3001/health | tee /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
+          grep -q '"redis":"PONG"' /tmp/health.json
+
+      - name: Verify enqueue endpoint
+        run: |
+          STATUS=$(curl -sS -o /tmp/job.json -w '%{http_code}' \
+            -X POST http://127.0.0.1:3001/api/v1/jobs \
+            -H 'Content-Type: application/json' \
+            -d '{"target":"smoke-test","content":"hello"}')
+
+          cat /tmp/job.json
+          test "$STATUS" = "202"
+          grep -q '"status":"QUEUED"' /tmp/job.json
+
+      - name: Playwright browser smoke
+        run: npx tsx apps/fb-worker/src/browser-smoke.ts
+
+      - name: Print API logs
+        if: always()
+        run: cat /tmp/fb-worker-api.log || true
