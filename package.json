@@ -1,0 +1,24 @@
+{
+  "name": "schedule-upload-facebook",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx apps/fb-worker/src/index.ts",
+    "browser:login": "tsx apps/fb-worker/src/browser-login.ts",
+    "playwright:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "bullmq": "^5.58.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "ioredis": "^5.7.0",
+    "playwright": "^1.55.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
