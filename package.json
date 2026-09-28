@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start": "npm run dev",
     "dev": "tsx apps/fb-worker/src/index.ts",
     "worker": "tsx apps/fb-worker/src/worker-runner.ts",
     "browser:login": "tsx apps/fb-worker/src/browser-login.ts",
