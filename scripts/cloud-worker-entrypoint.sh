@@ -10,6 +10,7 @@ LOG_DIR_VALUE="${LOG_DIR:-$DATA_DIR/logs}"
 NOVNC_PORT="${PORT:-6080}"
 VNC_PORT="${VNC_PORT:-5900}"
 SESSION_MARKER="$DATA_DIR/.facebook-session-ready"
+LOGIN_LOG="$DATA_DIR/browser-login.log"
 
 if [[ -z "${VNC_PASSWORD:-}" ]]; then
   echo "VNC_PASSWORD is required."
@@ -39,6 +40,11 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 
+if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+  echo "Xvfb did not become ready on $DISPLAY."
+  exit 1
+fi
+
 fluxbox >/tmp/fluxbox.log 2>&1 &
 FLUXBOX_PID=$!
 
@@ -62,6 +68,13 @@ WEBSOCKIFY_PID=$!
 
 echo "noVNC listening on port $NOVNC_PORT"
 
+echo "Running browser smoke check on cloud display..."
+if ! npm run smoke:browser; then
+  echo "Cloud browser smoke failed. Keeping noVNC online for diagnostics."
+  while true; do sleep 3600; done
+fi
+echo "Cloud browser smoke passed."
+
 if [[ "${CLOUD_FORCE_LOGIN:-false}" == "true" ]]; then
   rm -f "$SESSION_MARKER"
 fi
@@ -70,14 +83,18 @@ if [[ ! -f "$SESSION_MARKER" ]]; then
   echo "Facebook session is not initialized."
   echo "Open the noVNC URL, log into Facebook manually, then switch to the terminal window and press Enter."
 
-  xterm \
+  if ! xterm \
     -T "Facebook Login Control" \
     -geometry 115x18+10+10 \
-    -e bash -lc "cd /app; npm run browser:login; rc=\$?; if [ \$rc -eq 0 ]; then touch '$SESSION_MARKER'; echo 'Session saved. Starting worker...'; sleep 3; fi; exit \$rc"
+    -e bash -lc "set -o pipefail; cd /app; npm run browser:login 2>&1 | tee '$LOGIN_LOG' /proc/1/fd/1; rc=\${PIPESTATUS[0]}; if [ \$rc -eq 0 ]; then touch '$SESSION_MARKER'; echo 'Session saved. Starting worker...'; sleep 3; exit 0; fi; echo; echo 'browser:login failed with exit code' \$rc; echo 'Press Enter to close this terminal. noVNC will stay online for diagnostics.'; read; exit \$rc"
+  then
+    echo "Facebook login process exited with an error. Keeping noVNC online for diagnostics."
+    while true; do sleep 3600; done
+  fi
 
   if [[ ! -f "$SESSION_MARKER" ]]; then
-    echo "Facebook login was not completed successfully."
-    exit 1
+    echo "Facebook login was not completed successfully. Keeping noVNC online."
+    while true; do sleep 3600; done
   fi
 fi
 
