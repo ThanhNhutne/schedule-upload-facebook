@@ -11,6 +11,7 @@ RUN apt-get update \
     websockify \
     xterm \
     xfonts-base \
+    x11-utils \
     dbus-x11 \
   && rm -rf /var/lib/apt/lists/*
 
