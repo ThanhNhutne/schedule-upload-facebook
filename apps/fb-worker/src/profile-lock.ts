@@ -17,6 +17,7 @@ interface BrowserProfileLockRecord {
   owner: BrowserProfileOwner;
   acquiredAt: string;
   profileDir: string;
+  runtimeId?: string;
 }
 
 export interface BrowserProfileLockStatus {
@@ -29,6 +30,21 @@ export interface BrowserProfileLease {
   lockPath: string;
   owner: BrowserProfileOwner;
   release(): Promise<void>;
+}
+
+function getRuntimeId(): string | undefined {
+  const replicaId = process.env.RAILWAY_REPLICA_ID?.trim();
+  const deploymentId = process.env.RAILWAY_DEPLOYMENT_ID?.trim();
+
+  if (replicaId) {
+    return `railway-replica:${replicaId}`;
+  }
+
+  if (deploymentId) {
+    return `railway-deployment:${deploymentId}`;
+  }
+
+  return undefined;
 }
 
 function getLockPath(profileDir: string): string {
@@ -58,6 +74,23 @@ function isProcessAlive(pid: number): boolean {
 
     return code === 'EPERM';
   }
+}
+
+function isRecordOwnerAlive(
+  record: BrowserProfileLockRecord,
+): boolean {
+  const currentRuntimeId = getRuntimeId();
+
+  // A persisted lock from a previous Railway replica/deployment cannot
+  // represent a live process in this runtime, even if Linux reused its PID.
+  if (
+    currentRuntimeId &&
+    record.runtimeId !== currentRuntimeId
+  ) {
+    return false;
+  }
+
+  return isProcessAlive(record.pid);
 }
 
 async function readLockRecord(
@@ -117,7 +150,7 @@ export async function inspectBrowserProfileLock(
 
   return {
     lockPath,
-    state: isProcessAlive(record.pid)
+    state: isRecordOwnerAlive(record)
       ? 'held'
       : 'stale',
     record,
@@ -128,7 +161,7 @@ async function removeStaleLock(
   lockPath: string,
   record: BrowserProfileLockRecord | undefined,
 ): Promise<boolean> {
-  if (!record || isProcessAlive(record.pid)) {
+  if (!record || isRecordOwnerAlive(record)) {
     return false;
   }
 
@@ -153,6 +186,7 @@ export async function acquireBrowserProfileLease(
       owner,
       acquiredAt: new Date().toISOString(),
       profileDir: absoluteProfileDir,
+      runtimeId: getRuntimeId(),
     };
 
     try {
@@ -181,7 +215,8 @@ export async function acquireBrowserProfileLease(
 
           if (
             current?.pid === process.pid &&
-            current.owner === owner
+            current.owner === owner &&
+            current.runtimeId === record.runtimeId
           ) {
             await unlink(lockPath).catch(() => undefined);
           }
