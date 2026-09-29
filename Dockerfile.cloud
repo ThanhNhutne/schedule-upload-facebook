@@ -10,6 +10,7 @@ RUN apt-get update \
     novnc \
     websockify \
     xterm \
+    xfonts-base \
     dbus-x11 \
   && rm -rf /var/lib/apt/lists/*
 
