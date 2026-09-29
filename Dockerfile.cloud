@@ -1,0 +1,36 @@
+FROM mcr.microsoft.com/playwright:v1.55.0-noble
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    xvfb \
+    fluxbox \
+    x11vnc \
+    novnc \
+    websockify \
+    xterm \
+    dbus-x11 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY apps ./apps
+COPY scripts ./scripts
+
+RUN npm run typecheck
+
+ENV HEADLESS=false
+ENV DISPLAY=:99
+ENV PORT=6080
+ENV BROWSER_PROFILE_DIR=/app/data/browser-profile
+ENV SCREENSHOT_DIR=/app/data/screenshots
+ENV LOG_DIR=/app/data/logs
+
+EXPOSE 6080
+
+CMD ["bash", "scripts/cloud-worker-entrypoint.sh"]
