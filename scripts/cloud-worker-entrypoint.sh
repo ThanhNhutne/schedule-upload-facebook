@@ -19,6 +19,17 @@ fi
 
 mkdir -p "$DATA_DIR" "$PROFILE_DIR" "$SCREEN_DIR" "$LOG_DIR_VALUE" /run/cloud-vnc
 
+# Chromium leaves process-singleton runtime files in a persistent profile.
+# They are valid only for the container that created them. At this point no
+# browser process has been started in the new container, so only these runtime
+# locks are safe to remove; cookies/session/profile data remain untouched.
+rm -f \
+  "$PROFILE_DIR/SingletonLock" \
+  "$PROFILE_DIR/SingletonSocket" \
+  "$PROFILE_DIR/SingletonCookie" \
+  "$PROFILE_DIR/DevToolsActivePort" \
+  2>/dev/null || true
+
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 || true
 
 cleanup() {
