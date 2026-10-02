@@ -36,7 +36,7 @@ cleanup() {
   set +e
   [[ -n "${WEBSOCKIFY_PID:-}" ]] && kill "$WEBSOCKIFY_PID" 2>/dev/null
   [[ -n "${X11VNC_PID:-}" ]] && kill "$X11VNC_PID" 2>/dev/null
-  [[ -n "${FLUXBOX_PID:-}" ]] && kill "$FLUXBOX_PID" 2>/dev/null
+  [[ -n "${XFWM_PID:-}" ]] && kill "$XFWM_PID" 2>/dev/null
   [[ -n "${XVFB_PID:-}" ]] && kill "$XVFB_PID" 2>/dev/null
 }
 trap cleanup EXIT INT TERM
@@ -56,8 +56,18 @@ if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
   exit 1
 fi
 
-fluxbox >/tmp/fluxbox.log 2>&1 &
-FLUXBOX_PID=$!
+eval "$(dbus-launch --sh-syntax)"
+xfwm4 --replace --compositor=off --sm-client-disable >/tmp/xfwm4.log 2>&1 &
+XFWM_PID=$!
+
+sleep 1
+if ! kill -0 "$XFWM_PID" 2>/dev/null; then
+  echo "xfwm4 failed to start."
+  cat /tmp/xfwm4.log || true
+  exit 1
+fi
+
+echo "xfwm4 window manager ready with standard window controls."
 
 x11vnc -storepasswd "$VNC_PASSWORD" /run/cloud-vnc/passwd >/dev/null
 
